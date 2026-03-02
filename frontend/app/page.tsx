@@ -150,14 +150,14 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* TRUSTED BY LOGO CLOUD */}
+        {/* UNIVERSAL INTEGRATION LAYER */}
         <section className="py-20 flex flex-col items-center">
           <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 mb-12">Universal Integration Layer</p>
-          <div className="flex flex-wrap items-center justify-center gap-16 md:gap-24 grayscale opacity-30 invert hover:grayscale-0 hover:opacity-100 transition-all duration-700">
-            <div className="flex items-center gap-3 font-black text-xl"><Globe size={24} /> NEXT.JS</div>
-            <div className="flex items-center gap-3 font-black text-xl"><Terminal size={24} /> GO-FIBER</div>
-            <div className="flex items-center gap-3 font-black text-xl"><Database size={24} /> REDIS</div>
-            <div className="flex items-center gap-3 font-black text-xl"><Terminal size={24} /> PYTHON</div>
+          <div className="flex flex-wrap items-center justify-center gap-12 md:gap-20 text-slate-300 opacity-60 hover:opacity-100 hover:text-blue-600 transition-all duration-700">
+            <div className="flex items-center gap-3 font-black text-xl tracking-tighter"><Globe size={22} className="text-blue-500/50" /> NEXT.JS</div>
+            <div className="flex items-center gap-3 font-black text-xl tracking-tighter"><Terminal size={22} className="text-indigo-500/50" /> GO-FIBER</div>
+            <div className="flex items-center gap-3 font-black text-xl tracking-tighter"><Database size={22} className="text-emerald-500/50" /> REDIS</div>
+            <div className="flex items-center gap-3 font-black text-xl tracking-tighter"><Terminal size={22} className="text-violet-500/50" /> PYTHON</div>
           </div>
         </section>
 
