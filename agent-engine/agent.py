@@ -1,43 +1,131 @@
 from langgraph.graph import StateGraph, START, END
+from langchain_google_genai import ChatGoogleGenerativeAI
 from typing import TypedDict
 import os
+import httpx
+from dotenv import load_dotenv
 
-# Define the State. This is the "memory" that gets passed between nodes.
+load_dotenv()
+
+# Configuration
+api_key = os.getenv("GOOGLE_API_KEY")
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3-flash-preview", # SaaS-grade speed and reliability
+    google_api_key=api_key,
+    temperature=0.3,
+    max_retries=3
+)
+
+# Signal Helper to notify Go API of progress with real-time content
+async def send_signal(task_id: str, phase: str, message: str = ""):
+    if not task_id: return
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "http://localhost:8080/api/v1/internal/progress",
+                json={
+                    "task_id": task_id, 
+                    "phase": phase,
+                    "message": message
+                },
+                timeout=2.0
+            )
+    except Exception as e:
+        print(f"[Signal Error] {e}")
+
+# --- SaaS-Grade Agentic State Definitions ---
 class AgentState(TypedDict):
+    task_id: str
     instruction: str
+    plan: str
+    deep_analysis: str
     result: str
 
-# Node 1: The Reasoning Engine
-def reasoning_node(state: AgentState):
-    instruction = state["instruction"]
+# --- Node 1: Strategic Planner ---
+async def planner_node(state: AgentState):
+    print("[Agent] Strategic Planning Phase...")
+    await send_signal(state.get('task_id'), "planning", "Initializing Plan...")
     
-    # NOTE: To connect a real LLM, you would do this:
-    # from langchain_openai import ChatOpenAI
-    # llm = ChatOpenAI(model="gpt-4o")
-    # response = llm.invoke(instruction)
-    # result_text = response.content
+    prompt = f"""
+    Analyze the following request and create a high-level 3-point strategy for resolution.
+    Request: {state['instruction']}
+    Provide only the plan steps.
+    """
+    response = await llm.ainvoke(prompt)
     
-    # For local testing without an API key, we will simulate the LLM's output:
-    print(f"      -> [LangGraph Node] Processing instruction: {instruction}")
-    result_text = f"Successfully analyzed and processed: '{instruction}'"
+    # Send what Gemini provided for this step
+    await send_signal(state.get('task_id'), "planning", response.content)
     
-    return {"result": result_text}
+    return {"plan": response.content}
 
-# Build the Graph
+# --- Node 2: Deep Analysis Researcher ---
+async def researcher_node(state: AgentState):
+    print("[Agent] Deep Analysis Phase...")
+    await send_signal(state.get('task_id'), "researching", "Performing Deep Research...")
+    
+    prompt = f"""
+    Using the strategic plan:
+    {state['plan']}
+    
+    Solve the original request: {state['instruction']}
+    Provide a detailed, expert-level analysis or solution.
+    """
+    response = await llm.ainvoke(prompt)
+    
+    # Send researcher output
+    await send_signal(state.get('task_id'), "researching", response.content)
+    
+    return {"deep_analysis": response.content}
+
+# --- Node 3: UI/UX Content Stylist ---
+async def stylist_node(state: AgentState):
+    print("[Agent] Synthesis & Formatting Phase...")
+    await send_signal(state.get('task_id'), "styling", "Applying SaaS Styling...")
+    
+    prompt = f"""
+    Format the following analysis into a premium, SaaS-quality report.
+    Use professional Markdown, including:
+    - Bold Headers
+    - Bullet points for readability
+    - A 'Key Insights' summary section
+    - A short 'Next Steps' recommendation
+    
+    Content to format:
+    {state['deep_analysis']}
+    """
+    response = await llm.ainvoke(prompt)
+    
+    # Send styling output
+    await send_signal(state.get('task_id'), "styling", response.content)
+    
+    return {"result": response.content}
+
+# --- Build the High-Performance SaaS Workflow Graph ---
 workflow = StateGraph(AgentState)
 
-# Add the nodes (steps) to our graph
-workflow.add_node("reason", reasoning_node)
+# Define our professional agent nodes
+workflow.add_node("planner", planner_node)
+workflow.add_node("researcher", researcher_node)
+workflow.add_node("stylist", stylist_node)
 
-# Define the edges (the flow of execution)
-workflow.add_edge(START, "reason")
-workflow.add_edge("reason", END)
+# Map the logical flow (START -> Plan -> Research -> Style -> END)
+workflow.add_edge(START, "planner")
+workflow.add_edge("planner", "researcher")
+workflow.add_edge("researcher", "stylist")
+workflow.add_edge("stylist", END)
 
-# Compile the graph into an executable application
+# Compile into an executable SaaS Engine
 app_graph = workflow.compile()
 
-# Export a function to be called by our API
-def run_workflow(instruction: str) -> dict:
-    initial_state = {"instruction": instruction, "result": ""}
-    final_state = app_graph.invoke(initial_state)
+# Primary Export for Orchestrator
+async def run_workflow(instruction: str, task_id: str = "") -> dict:
+    initial_state = {
+        "task_id": task_id,
+        "instruction": instruction, 
+        "plan": "", 
+        "deep_analysis": "", 
+        "result": ""
+    }
+    # Execute the multi-step reasoning chain
+    final_state = await app_graph.ainvoke(initial_state)
     return final_state

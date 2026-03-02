@@ -1,39 +1,63 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
 import uvicorn
+import asyncio
+import sys
+from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware # Import this!
+from pydantic import BaseModel
 from agent import run_workflow
+from contextlib import asynccontextmanager
 
-# Initialize the FastAPI app
-app = FastAPI(title="AI Agent Engine", description="Executes LangGraph Workflows")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[System] AI Agent Engine initialized and warming up...")
+    yield
+    print("[System] Shutting down AI Agent Engine...")
 
-# Define the strict typing for incoming requests
+app = FastAPI(
+    title="AI Agent Engine", 
+    description="High-Performance LangGraph Execution",
+    lifespan=lifespan
+)
+
+# --- Optimization: GZip Compression ---
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 class WorkflowPayload(BaseModel):
     workflow_id: str
     instruction: str
 
-# The core execution endpoint
 @app.post("/api/v1/agent/run")
 async def run_agent(payload: WorkflowPayload):
     print(f"\n[Agent Engine] Picked up workflow: {payload.workflow_id}")
-    print(f"[Agent Engine] Instruction: {payload.instruction}")
     
-    # TODO: This is where we will integrate LangGraph and OpenAI/LLM calls.
-    graph_result = run_workflow(payload.instruction)
+    # Executes our optimized LangGraph
+    graph_result = await run_workflow(payload.instruction, task_id=payload.workflow_id)
 
     print(f"[Agent Engine] Graph execution complete.") 
     
-    # Return the processed result
     return {
         "status": "success",
         "workflow_id": payload.workflow_id,
         "final_result": graph_result["result"]
     }
 
-# Health check route
 @app.get("/health")
 async def health_check():
     return {"status": "Agent Engine is alive and ready."}
 
 if __name__ == "__main__":
-    # Run the server on port 8000
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # --- Windows Performance Optimization ---
+    if sys.platform == 'win32':
+        # ProactorEventLoop is the high-performance loop for Windows
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
+    # --- Production-Ready Runner ---
+    uvicorn.run(
+        "main:app", 
+        host="127.0.0.1", 
+        port=8000, 
+        # On Windows, 'workers' must be 1 if using a custom loop policy in __main__
+        workers=1,           
+        http="httptools",    # Faster HTTP parser (works on Windows)
+        log_level="info"
+    )
