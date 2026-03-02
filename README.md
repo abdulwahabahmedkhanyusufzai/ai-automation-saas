@@ -41,7 +41,7 @@ graph TD
 | **Task Queue** | Redis, Asynq | Asynchronous background processing |
 | **AI Agent** | Python, LangGraph, LangChain | Multi-step reasoning & state management |
 | **Model** | Google Gemini | Large Language Model (Flash/Pro) |
-| **Auth** | Google OAuth, JWT | Secure identity management |
+| **Auth** | Google OAuth, GitHub OAuth, JWT | Secure identity management |
 
 ---
 
@@ -49,8 +49,9 @@ graph TD
 
 1. **Multi-Phase Reasoning**: Agents follow a strategic **Planning $\to$ Researching $\to$ Styling** flow.
 2. **Real-Time Signaling**: Watch agents think in real-time with live content streaming to the dashboard.
-3. **Fault-Tolerant**: Independent microservices with retries and task persistence.
-4. **SaaS Graphics**: Premium, responsive dashboard with glassmorphism and animated workflow tracking.
+3. **Dual-Oauth Auth**: Instant access via Google or GitHub for developer-friendly onboarding.
+4. **Fault-Tolerant**: Independent microservices with retries and task persistence.
+5. **SaaS Graphics**: Premium, responsive dashboard with glassmorphism and animated workflow tracking.
 
 ---
 
@@ -62,6 +63,7 @@ graph TD
 - Python 3.10+
 - Google Cloud API Key (Gemini)
 - Google OAuth Client ID
+- GitHub OAuth Client ID & Secret
 
 ### 2. Environment Setup
 Create a `.env` in the `orchestrator/` and `agent-engine/` directories:
@@ -73,6 +75,8 @@ DB_PORT=5433
 REDIS_ADDR=127.0.0.1:6379
 JWT_SECRET=your_secret
 GOOGLE_CLIENT_ID=your_id
+GITHUB_CLIENT_ID=your_id
+GITHUB_CLIENT_SECRET=your_secret
 ```
 
 **Agent Engine (.env):**

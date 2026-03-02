@@ -64,6 +64,7 @@ func main() {
 	app.Post("/signup", handlers.Signup)
 	app.Post("/login", handlers.Login)
 	app.Post("/google-login", handlers.GoogleLogin)
+	app.Post("/github-login", handlers.GithubLogin)
 
 	api := app.Group("/api/v1")
 	api.Use(middleware.JWTMiddleware)

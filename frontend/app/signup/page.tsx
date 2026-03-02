@@ -1,17 +1,55 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Mail, Lock, UserPlus, Loader2, ArrowRight } from "lucide-react";
+import { Sparkles, Mail, Lock, UserPlus, Loader2, ArrowRight, Github } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 
 export default function SignupPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const githubCode = searchParams.get("code");
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
+    // Handle GitHub Callback automatically
+    useEffect(() => {
+        if (githubCode) {
+            handleGithubLogin(githubCode);
+        }
+    }, [githubCode]);
+
+    const handleGithubLogin = async (code: string) => {
+        setLoading(true);
+        setError("");
+        try {
+            const res = await fetch("http://localhost:8080/github-login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+
+            localStorage.setItem("token", data.token);
+            router.push("/dashboard");
+        } catch (err: any) {
+            setError(err.message || "GitHub Signup Failed");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const redirectToGithub = () => {
+        const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
+        const redirectUri = window.location.origin + "/signup";
+        window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email`;
+    };
 
     const handleGoogleSuccess = async (credentialResponse: any) => {
         setLoading(true);
@@ -77,7 +115,7 @@ export default function SignupPage() {
 
                 {/* Card */}
                 <div className="bg-white border border-slate-200 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 sm:p-10">
-                    <div className="mb-8">
+                    <div className="flex flex-col gap-3 mb-8">
                         <GoogleLogin
                             onSuccess={handleGoogleSuccess}
                             onError={() => setError("Google Signup Failed")}
@@ -87,6 +125,15 @@ export default function SignupPage() {
                             width="100%"
                             shape="pill"
                         />
+
+                        <button
+                            onClick={redirectToGithub}
+                            type="button"
+                            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-full transition-all duration-300 active:scale-[0.98] text-sm"
+                        >
+                            <Github size={18} />
+                            Continue with GitHub
+                        </button>
                     </div>
 
                     <div className="relative mb-8 text-center">

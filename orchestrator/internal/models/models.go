@@ -8,10 +8,12 @@ import (
 
 // Exported Symbols (assigned from env in main)
 var (
-	JWTKey         []byte
-	RedisAddr      string
-	AgentURL       string
-	GoogleClientID string
+	JWTKey             []byte
+	RedisAddr          string
+	AgentURL           string
+	GoogleClientID     string
+	GithubClientID     string
+	GithubClientSecret string
 )
 
 // InitConfig loads exported symbols from environment variables
@@ -20,6 +22,8 @@ func InitConfig() {
 	RedisAddr = os.Getenv("REDIS_ADDR")
 	AgentURL = os.Getenv("AGENT_URL")
 	GoogleClientID = os.Getenv("GOOGLE_CLIENT_ID")
+	GithubClientID = os.Getenv("GITHUB_CLIENT_ID")
+	GithubClientSecret = os.Getenv("GITHUB_CLIENT_SECRET")
 }
 
 // Structs

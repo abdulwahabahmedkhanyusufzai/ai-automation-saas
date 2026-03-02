@@ -3,9 +3,11 @@ package handlers
 import (
 	"ai-saas-orchesrator/internal/db"
 	"ai-saas-orchesrator/internal/models"
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -122,7 +124,110 @@ func GoogleLogin(c *fiber.Ctx) error {
 	})
 }
 
-// --- WORKFLOW HANDLERS ---
+func GithubLogin(c *fiber.Ctx) error {
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	// 1. Exchange code for access token
+	tokenURL := "https://github.com/login/oauth/access_token"
+	requestBody, _ := json.Marshal(map[string]string{
+		"client_id":     models.GithubClientID,
+		"client_secret": models.GithubClientSecret,
+		"code":          body.Code,
+	})
+
+	req, _ := http.NewRequest("POST", tokenURL, bytes.NewBuffer(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to authenticate with GitHub"})
+	}
+	defer resp.Body.Close()
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	json.NewDecoder(resp.Body).Decode(&tokenResp)
+
+	if tokenResp.AccessToken == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid code from GitHub"})
+	}
+
+	// 2. Fetch user information
+	userReq, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	userReq.Header.Set("Authorization", "token "+tokenResp.AccessToken)
+	userResp, err := client.Do(userReq)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch GitHub user"})
+	}
+	defer userResp.Body.Close()
+
+	var githubUser struct {
+		Email string `json:"email"`
+		Login string `json:"login"`
+	}
+	json.NewDecoder(userResp.Body).Decode(&githubUser)
+
+	email := githubUser.Email
+	// If email is private, we need to fetch user emails specifically
+	if email == "" {
+		emailsReq, _ := http.NewRequest("GET", "https://api.github.com/user/emails", nil)
+		emailsReq.Header.Set("Authorization", "token "+tokenResp.AccessToken)
+		emailsResp, err := client.Do(emailsReq)
+		if err == nil {
+			defer emailsResp.Body.Close()
+			var githubEmails []struct {
+				Email   string `json:"email"`
+				Primary bool   `json:"primary"`
+			}
+			json.NewDecoder(emailsResp.Body).Decode(&githubEmails)
+			for _, e := range githubEmails {
+				if e.Primary {
+					email = e.Email
+					break
+				}
+			}
+		}
+	}
+
+	if email == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Github primary email not found"})
+	}
+
+	// 3. User Sync (Database)
+	var id int
+	err = db.DB.QueryRow("SELECT id FROM users WHERE email=$1", email).Scan(&id)
+	if err != nil {
+		insertQuery := `INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id`
+		err = db.DB.QueryRow(insertQuery, email, "github-auth-no-password").Scan(&id)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		}
+	}
+
+	// 4. Local JWT Issue
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &models.Claims{
+		Email: email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(models.JWTKey)
+
+	return c.JSON(fiber.Map{
+		"message": "GitHub Login successful",
+		"token":   tokenString,
+	})
+}
 
 func TriggerWorkflow(client *asynq.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
