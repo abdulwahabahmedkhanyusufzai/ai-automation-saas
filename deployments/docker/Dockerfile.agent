@@ -1,0 +1,25 @@
+# Python AI Agent Engine
+FROM python:3.11-slim-bullseye
+
+WORKDIR /app
+
+# System dependencies for speed
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cache requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Add source code
+COPY . .
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+EXPOSE 8000
+CMD ["python", "src/main.py"]

@@ -1,0 +1,20 @@
+# Shared Prompt configuration for the AI Agent
+# Centralized prompts for easier A/B testing and modification
+
+planner_prompt: |
+  Analyze the following request and create a high-level 3-point strategy for resolution.
+  Request: {instruction}
+  Provide only the plan steps.
+
+researcher_prompt: |
+  Using the strategic plan below:
+  {plan}
+  
+  Solve the original request: {instruction}
+  Provide a detailed, expert-level analysis or solution.
+
+stylist_prompt: |
+  Format the following analysis into a premium, SaaS-quality report.
+  Use professional Markdown.
+  Content to format:
+  {deep_analysis}

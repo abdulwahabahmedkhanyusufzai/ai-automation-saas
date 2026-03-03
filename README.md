@@ -84,23 +84,32 @@ GITHUB_CLIENT_SECRET=your_secret
 GOOGLE_API_KEY=your_key
 ```
 
-### 3. Run the Stack
+### 3. Run the Stack (Development)
 ```bash
 # Start Infra (Redis/Postgres)
-docker-compose up -d
+make run-infra
 
 # Run Orchestrator
-cd orchestrator
-go run cmd/orchestrator/main.go
+make run-orch
 
 # Run Agent
-cd agent-engine
-python main.py
+make run-agent
 
 # Run Frontend
-cd frontend
-npm run dev
+make run-frontend
 ```
+
+### 🚢 Deploy via Terminal (Production)
+For a complete, containerized production deployment:
+```bash
+# Build all production images
+make build-prod
+
+# Deploy the entire stack
+make deploy-prod
+```
+> See [docs/deployment.md](./docs/deployment.md) for full configuration details.
+
 
 ---
 
@@ -110,9 +119,21 @@ AgenticSaaS uses a bi-directional signaling pattern. While the `Asynq` worker ha
 ---
 
 ## 📂 Project Structure
+
 ```text
-├── agent-engine/        # Python LangGraph engine
-├── orchestrator/        # Go (Fiber) & Asynq Workers
-├── frontend/            # Next.js 15+ Dashboard
-└── docker-compose.yaml  # Shared infrastructure
+├── apps/
+│   ├── agent-engine/    # Python LangGraph engine (FastAPI/LangGraph)
+│   ├── orchestrator/    # Go (Fiber) & Asynq Workers
+│   └── frontend/        # Next.js 15+ Dashboard
+├── configs/             # Shared configuration files
+├── deployments/         # Docker, K8s, and CI/CD configurations
+│   └── docker/          # Docker compose and service-specific Dockerfiles
+├── docs/                # System documentation and architecture diagrams
+├── infra/               # Infrastructure as Code (Terraform, etc.)
+├── libs/                # Shared internal libraries and protos
+├── scripts/             # Development and deployment scripts
+├── tests/               # End-to-end and integration tests
+├── Makefile             # Root task runner
+└── docker-compose.yaml  # Infrastructure orchestration
 ```
+
