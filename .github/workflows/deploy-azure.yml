@@ -1,0 +1,38 @@
+name: Azure Deployment (Container Apps) 🚀
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and Push Orchestrator
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest -f deployments/docker/Dockerfile.orchestrator apps/orchestrator
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+
+      - name: Build and Push Agent Engine
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest -f deployments/docker/Dockerfile.agent apps/agent-engine
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-orchestrator
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest

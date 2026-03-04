@@ -101,6 +101,17 @@ make run-frontend
 
 ### 🚢 Deploy via Terminal (Production)
 For a complete, containerized production deployment:
+
+**On Windows (PowerShell):**
+```powershell
+# Build all production images
+.\scripts\deploy.ps1 -Action build-prod
+
+# Deploy the entire stack
+.\scripts\deploy.ps1 -Action deploy-prod
+```
+
+**On Linux/CI-CD (Bash):**
 ```bash
 # Build all production images
 make build-prod
@@ -108,7 +119,15 @@ make build-prod
 # Deploy the entire stack
 make deploy-prod
 ```
-> See [docs/deployment.md](./docs/deployment.md) for full configuration details.
+
+### ☁️ Cloud Deployment (Azure)
+This project is optimized for **Azure Container Apps (Serverless)**.
+- **Infrastructure**: See [infra/terraform/azure.tf](./infra/terraform/azure.tf)
+- **CI/CD**: See [.github/workflows/deploy-azure.yml](./.github/workflows/deploy-azure.yml)
+- **Full Guide**: [docs/deployment.md](./docs/deployment.md)
+
+
+
 
 
 ---
