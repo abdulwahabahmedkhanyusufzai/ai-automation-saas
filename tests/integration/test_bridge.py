@@ -4,7 +4,7 @@ import httpx
 import time
 
 # Configurable endpoints
-ORCHESTRATOR_URL = "http://localhost:8080"
+ORCHESTRATOR_URL = "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io"
 AGENT_ENGINE_URL = "http://localhost:8000"
 
 def test_agent_engine_health():

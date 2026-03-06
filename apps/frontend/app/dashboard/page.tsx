@@ -41,7 +41,7 @@ export default function WorkflowDashboard() {
 
         try {
             const res = await axios.post(
-                "http://localhost:8080/api/v1/workflows/trigger",
+                "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/workflows/trigger",
                 {
                     workflow_id: Math.random().toString(36).substring(7),
                     instruction: instruction,
@@ -64,7 +64,7 @@ export default function WorkflowDashboard() {
                 try {
                     const token = localStorage.getItem("token");
                     const res = await axios.get(
-                        `http://localhost:8080/api/v1/workflows/status/${taskId}`,
+                        `https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/workflows/status/${taskId}`,
                         {
                             headers: { Authorization: `Bearer ${token}` } // Attach JWT
                         }

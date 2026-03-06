@@ -22,7 +22,7 @@ async def send_signal(task_id: str, phase: str, message: str = ""):
     try:
         async with httpx.AsyncClient() as client:
             await client.post(
-                "http://localhost:8080/api/v1/internal/progress",
+                "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/internal/progress",
                 json={
                     "task_id": task_id, 
                     "phase": phase,
