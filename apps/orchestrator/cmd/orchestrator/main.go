@@ -52,7 +52,7 @@ func main() {
 	// 3. Initialize Fiber App
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000",
+		AllowOrigins: "https://ca-frontend.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 

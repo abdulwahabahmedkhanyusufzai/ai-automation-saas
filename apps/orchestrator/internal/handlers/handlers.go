@@ -3,11 +3,12 @@ package handlers
 import (
 	"ai-saas-orchesrator/internal/db"
 	"ai-saas-orchesrator/internal/models"
-	"bytes"
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -134,14 +135,13 @@ func GithubLogin(c *fiber.Ctx) error {
 
 	// 1. Exchange code for access token
 	tokenURL := "https://github.com/login/oauth/access_token"
-	requestBody, _ := json.Marshal(map[string]string{
-		"client_id":     models.GithubClientID,
-		"client_secret": models.GithubClientSecret,
-		"code":          body.Code,
-	})
+	data := url.Values{}
+	data.Set("client_id", models.GithubClientID)
+	data.Set("client_secret", models.GithubClientSecret)
+	data.Set("code", body.Code)
 
-	req, _ := http.NewRequest("POST", tokenURL, bytes.NewBuffer(requestBody))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest("POST", tokenURL, strings.NewReader(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
