@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  # BUILD JOBS (UNCHANGED)
+  # BUILD JOBS (Go, Python, Next.js)
   build-orchestrator:
     name: Build & Push (Orchestrator)
     runs-on: ubuntu-latest
@@ -59,18 +59,14 @@ jobs:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Authenticate to Azure (OIDC)
-        uses: azure/login@v2
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-      - name: Build + Push Frontend image
-        run: |
+      - run: az acr login --name ${{ secrets.ACR_NAME }}
+      - run: |
           TAG=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
           docker build \
             --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
@@ -78,7 +74,7 @@ jobs:
             -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
           docker push $TAG
 
-  # MIGRATION & DEPLOYMENT JOBS
+  # MIGRATION & DEPLOYMENT JOB
   deploy-all-to-uae:
     name: Migrate & Deploy to UAE
     needs: [build-orchestrator, build-agent-engine, build-frontend]
@@ -89,6 +85,7 @@ jobs:
       AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
       ENV_NAME: 'managed-env-uae'
     steps:
+      - uses: actions/checkout@v4
       - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -99,12 +96,21 @@ jobs:
       - name: Ensure Container Apps extension
         run: az extension add --name containerapp --upgrade --yes
 
-      - name: Cleanup Non-UAE Environments (Free Tier 1-Env Limit)
+      - name: Recursive Cleanup (Free Tier Quota Management)
         run: |
-          echo "Checking for old environments in other regions..."
+          echo "Phase 1: Finding old environments NOT in uaenorth..."
           OLD_ENVS=$(az containerapp env list -g ${{ env.AZURE_RG }} --query "[?location!='uaenorth'].name" -o tsv)
+          
           for env in $OLD_ENVS; do
-            echo "Deleting old environment: $env to free up student quota..."
+            echo "Phase 2: Removing all apps inside $env to allow deletion..."
+            # Find apps belonging to this environment
+            APPS_IN_ENV=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?contains(managedEnvironmentId, '$env')].name" -o tsv)
+            for app in $APPS_IN_ENV; do
+              echo "Deleting app: $app"
+              az containerapp delete -n $app -g ${{ env.AZURE_RG }} --yes
+            done
+            
+            echo "Phase 3: Deleting empty environment: $env"
             az containerapp env delete -n $env -g ${{ env.AZURE_RG }} --yes
           done
 
@@ -118,31 +124,22 @@ jobs:
 
       - name: Deploy Orchestrator
         run: |
-          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-orchestrator'].name" -o tsv)
-          if [ -z "$APP_EXISTS" ]; then
-            az containerapp create -g ${{ env.AZURE_RG }} -n ca-orchestrator --environment ${{ env.ENV_NAME }} \
-              --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }} --ingress external --target-port 8080
-          else
-            az containerapp update -g ${{ env.AZURE_RG }} -n ca-orchestrator --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }}
-          fi
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-orchestrator \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 8080 --cpu 0.5 --memory 1.0Gi
 
       - name: Deploy Agent Engine
         run: |
-          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-agent-engine'].name" -o tsv)
-          if [ -z "$APP_EXISTS" ]; then
-            az containerapp create -g ${{ env.AZURE_RG }} -n ca-agent-engine --environment ${{ env.ENV_NAME }} \
-              --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }} --ingress external --target-port 8000 \
-              --cpu 1.0 --memory 2.0Gi
-          else
-            az containerapp update -g ${{ env.AZURE_RG }} -n ca-agent-engine --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }}
-          fi
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-agent-engine \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 8000 \
+            --cpu 1.0 --memory 2.0Gi
 
       - name: Deploy Frontend
         run: |
-          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-frontend'].name" -o tsv)
-          if [ -z "$APP_EXISTS" ]; then
-            az containerapp create -g ${{ env.AZURE_RG }} -n ca-frontend --environment ${{ env.ENV_NAME }} \
-              --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} --ingress external --target-port 3000
-          else
-            az containerapp update -g ${{ env.AZURE_RG }} -n ca-frontend --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}
-          fi
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-frontend \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 3000 --cpu 0.5 --memory 1.0Gi
