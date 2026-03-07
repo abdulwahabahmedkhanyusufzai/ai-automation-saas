@@ -11,6 +11,10 @@ permissions:
 jobs:
   deploy-job:
     runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,23 +31,30 @@ jobs:
           az account show
           az group list -o table
 
+      - name: Validate ACR_NAME secret
+        if: ${{ secrets.ACR_NAME == '' }}
+        run: |
+          echo "ERROR: GitHub secret ACR_NAME is not set."
+          echo "Go to Settings → Secrets and add ACR_NAME with your ACR registry name."
+          exit 1
+
       - name: ACR Login
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and Push Orchestrator
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest -f deployments/docker/Dockerfile.orchestrator apps/orchestrator
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+          docker build -t $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG -f deployments/docker/Dockerfile.orchestrator apps/orchestrator
+          docker push $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
 
       - name: Build and Push Agent Engine
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest -f deployments/docker/Dockerfile.agent apps/agent-engine
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+          docker build -t $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG -f deployments/docker/Dockerfile.agent apps/agent-engine
+          docker push $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
 
       - name: Build and Push Frontend
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest -f deployments/docker/Dockerfile.frontend apps/frontend
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+          docker build -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG -f deployments/docker/Dockerfile.frontend apps/frontend
+          docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
 
       - name: Deploy Orchestrator to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
@@ -51,7 +62,7 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RG }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-orchestrator
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+          imageToDeploy: $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
 
       - name: Deploy Agent Engine to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
@@ -59,7 +70,7 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RG }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-agent-engine
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+          imageToDeploy: $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
 
       - name: Deploy Frontend to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
@@ -67,4 +78,4 @@ jobs:
           resourceGroup: ${{ secrets.AZURE_RG }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-frontend
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+          imageToDeploy: $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
