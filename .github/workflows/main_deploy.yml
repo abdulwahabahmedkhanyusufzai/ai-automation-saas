@@ -96,15 +96,14 @@ jobs:
             -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
           docker push $TAG
 
-  deploy:
-    name: Deploy (Container Apps)
-    needs: [build-orchestrator, build-agent-engine, build-frontend]
+  deploy-orchestrator:
+    name: Deploy (Orchestrator)
+    needs: build-orchestrator
     runs-on: ubuntu-latest
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
       AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-      AZURE_LOCATION: "East US"
     steps:
       - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
@@ -116,20 +115,66 @@ jobs:
       - name: Ensure Container Apps extension is installed
         run: az extension add --name containerapp --upgrade --yes
 
-      - name: Verify ACR images exist
+      - name: Verify Orchestrator image exists
         run: |
-          echo "Verifying image tags exist in ACR..."
+          echo "Verifying orchestrator image tag exists in ACR..."
           az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository orchestrator --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: orchestrator image tag $IMAGE_TAG not found in ACR" && exit 1)
-          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository agent-engine --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: agent-engine image tag $IMAGE_TAG not found in ACR" && exit 1)
-          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository frontend --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: frontend image tag $IMAGE_TAG not found in ACR" && exit 1)
 
       - name: Deploy Orchestrator to Azure Container Apps
         run: |
           az containerapp update -g $AZURE_RG -n ca-orchestrator --image $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
 
+  deploy-agent-engine:
+    name: Deploy (Agent Engine)
+    needs: build-agent-engine
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+    steps:
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure Container Apps extension is installed
+        run: az extension add --name containerapp --upgrade --yes
+
+      - name: Verify Agent Engine image exists
+        run: |
+          echo "Verifying agent-engine image tag exists in ACR..."
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository agent-engine --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: agent-engine image tag $IMAGE_TAG not found in ACR" && exit 1)
+
       - name: Deploy Agent Engine to Azure Container Apps
         run: |
           az containerapp update -g $AZURE_RG -n ca-agent-engine --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+
+  deploy-frontend:
+    name: Deploy (Frontend)
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+    steps:
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure Container Apps extension is installed
+        run: az extension add --name containerapp --upgrade --yes
+
+      - name: Verify Frontend image exists
+        run: |
+          echo "Verifying frontend image tag exists in ACR..."
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository frontend --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: frontend image tag $IMAGE_TAG not found in ACR" && exit 1)
 
       - name: Deploy Frontend to Azure Container Apps
         run: |
