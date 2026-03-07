@@ -1,0 +1,70 @@
+name: Azure CI/CD (OIDC)
+
+on:
+  push:
+    branches: [ master ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Test Connection
+        run: |
+          az account show
+          az group list -o table
+
+      - name: ACR Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and Push Orchestrator
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest -f deployments/docker/Dockerfile.orchestrator apps/orchestrator
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+
+      - name: Build and Push Agent Engine
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest -f deployments/docker/Dockerfile.agent apps/agent-engine
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+
+      - name: Build and Push Frontend
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest -f deployments/docker/Dockerfile.frontend apps/frontend
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+
+      - name: Deploy Orchestrator to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-orchestrator
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+
+      - name: Deploy Agent Engine to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-agent-engine
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+
+      - name: Deploy Frontend to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-frontend
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
