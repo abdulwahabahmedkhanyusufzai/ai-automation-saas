@@ -24,8 +24,8 @@ jobs:
       - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init & Apply
-        working-directory: infra/terraform
+      - name: Terraform Init & Apply (Azure)
+        working-directory: infra/terraform/azure
         run: |
           terraform init -input=false
           terraform apply -auto-approve
