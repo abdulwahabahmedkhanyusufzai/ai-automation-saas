@@ -331,10 +331,20 @@ func GetWorkflowStatus(c *fiber.Ctx) error {
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(info.Result, &result)
+	if err := json.Unmarshal(info.Result, &result); err != nil {
+		log.Printf("[WorkflowStatus] failed to unmarshal result for task %s: %v; raw=%s", id, err, string(info.Result))
+		// If we can't parse JSON, return raw response as a fallback to avoid client crashes.
+		result = map[string]interface{}{"final_result": string(info.Result)}
+	}
+
+	if result == nil {
+		result = map[string]interface{}{"final_result": string(info.Result)}
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "completed",
 		"data":   result,
 		"phase":  "completed",
 	})
 }
+

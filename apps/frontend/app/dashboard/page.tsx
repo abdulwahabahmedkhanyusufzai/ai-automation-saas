@@ -80,6 +80,15 @@ export default function WorkflowDashboard() {
 
                     if (res.data.status === "completed") {
                         const rawData = res.data.data;
+
+                        if (!rawData) {
+                            setResult("No result returned from workflow.");
+                            setStatus("error");
+                            setCurrentPhase("completed");
+                            clearInterval(interval);
+                            return;
+                        }
+
                         let extraction = "";
 
                         if (typeof rawData.final_result === "string") {
