@@ -1,4 +1,4 @@
-name: Azure CI/CD (OIDC)
+name: AI SaaS CD Pipeline
 
 on:
   push:
@@ -9,28 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  deploy-job:
+  terraform:
     runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-      AZURE_LOCATION: "East US"
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Validate Azure OIDC secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ] || [ -z "${{ secrets.AZURE_TENANT_ID }}" ] || [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
-            echo "ERROR: Missing required Azure OIDC secrets."
-            echo "Make sure these secrets exist in Settings → Secrets and variables → Actions:"
-            echo "  - AZURE_CLIENT_ID"
-            echo "  - AZURE_TENANT_ID"
-            echo "  - AZURE_SUBSCRIPTION_ID"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -39,64 +21,82 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Test Connection
-        run: |
-          az account show
-          az group list -o table
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
 
-      - name: Validate ACR_NAME secret
+      - name: Terraform Init & Apply
+        working-directory: infra/terraform
         run: |
-          if [ -z "${{ secrets.ACR_NAME }}" ]; then
-            echo "ERROR: GitHub secret ACR_NAME is not set."
-            echo "Go to Settings → Secrets and add ACR_NAME with your ACR registry name."
-            exit 1
-          fi
+          terraform init -input=false
+          terraform apply -auto-approve
+
+  build-and-push:
+    needs: terraform
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: orchestrator
+            context: .
+            dockerfile: deployments/docker/Dockerfile.orchestrator
+            image: orchestrator
+          - service: agent-engine
+            context: .
+            dockerfile: deployments/docker/Dockerfile.agent
+            image: agent-engine
+          - service: frontend
+            context: apps/frontend
+            dockerfile: deployments/docker/Dockerfile.frontend
+            image: frontend
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR Login
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Build and Push Orchestrator
+      - name: Build & Push
         run: |
-          docker build -t $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG -f deployments/docker/Dockerfile.orchestrator .
-          docker push $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
+          TAG=$ACR_LOGIN_SERVER/${{ matrix.image }}:$IMAGE_TAG
+          docker build -t $TAG -f ${{ matrix.dockerfile }} ${{ matrix.context }}
+          docker push $TAG
 
-      - name: Build and Push Agent Engine
-        run: |
-          docker build -t $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG -f deployments/docker/Dockerfile.agent .
-          docker push $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      AZURE_LOCATION: "East US"
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and Push Frontend
-        run: |
-          docker build \
-            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
-            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GITHUB_CLIENT_ID }} \
-            -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG \
-            -f deployments/docker/Dockerfile.frontend apps/frontend
-          docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade --yes
 
       - name: Deploy Orchestrator to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-orchestrator
-          imageToDeploy: $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-orchestrator --image $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
 
       - name: Deploy Agent Engine to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-agent-engine
-          imageToDeploy: $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-agent-engine --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
 
       - name: Deploy Frontend to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-frontend
-          imageToDeploy: $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-frontend --image $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
