@@ -150,7 +150,11 @@ jobs:
 
       - name: Deploy Agent Engine to Azure Container Apps
         run: |
-          az containerapp update -g $AZURE_RG -n ca-agent-engine --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+          az containerapp update \
+            -g $AZURE_RG \
+            -n ca-agent-engine \
+            --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG \
+            --environment managed-env-uae
 
   deploy-frontend:
     name: Deploy (Frontend)
