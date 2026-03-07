@@ -4,7 +4,6 @@ on:
   push:
     branches: [ master ]
 
-# Prevents multiple workflow runs from fighting over Azure resources
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,6 +13,7 @@ permissions:
   contents: read
 
 jobs:
+  # BUILD JOBS (UNCHANGED)
   build-orchestrator:
     name: Build & Push (Orchestrator)
     runs-on: ubuntu-latest
@@ -21,21 +21,14 @@ jobs:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Azure (OIDC)
-        uses: azure/login@v2
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-
-      - name: Build + Push Orchestrator image
-        run: |
+      - run: az acr login --name ${{ secrets.ACR_NAME }}
+      - run: |
           TAG=$ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
           docker build -t $TAG -f deployments/docker/Dockerfile.orchestrator .
           docker push $TAG
@@ -47,21 +40,14 @@ jobs:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Azure (OIDC)
-        uses: azure/login@v2
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-
-      - name: Build + Push Agent Engine image
-        run: |
+      - run: az acr login --name ${{ secrets.ACR_NAME }}
+      - run: |
           TAG=$ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
           docker build -t $TAG -f deployments/docker/Dockerfile.agent .
           docker push $TAG
@@ -75,17 +61,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Login to ACR
         run: az acr login --name ${{ secrets.ACR_NAME }}
-
       - name: Build + Push Frontend image
         run: |
           TAG=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
@@ -95,14 +78,16 @@ jobs:
             -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
           docker push $TAG
 
-  deploy-orchestrator:
-    name: Deploy (Orchestrator)
-    needs: build-orchestrator
+  # MIGRATION & DEPLOYMENT JOBS
+  deploy-all-to-uae:
+    name: Migrate & Deploy to UAE
+    needs: [build-orchestrator, build-agent-engine, build-frontend]
     runs-on: ubuntu-latest
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
       AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      ENV_NAME: 'managed-env-uae'
     steps:
       - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
@@ -114,74 +99,50 @@ jobs:
       - name: Ensure Container Apps extension
         run: az extension add --name containerapp --upgrade --yes
 
-      - name: Deploy Orchestrator to Azure Container Apps
+      - name: Cleanup Non-UAE Environments (Free Tier 1-Env Limit)
         run: |
-          az containerapp update -g $AZURE_RG -n ca-orchestrator --image $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
-
-  deploy-agent-engine:
-    name: Deploy (Agent Engine)
-    needs: [deploy-orchestrator, build-agent-engine]
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-    steps:
-      - name: Authenticate to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Ensure Container Apps extension
-        run: az extension add --name containerapp --upgrade --yes
+          echo "Checking for old environments in other regions..."
+          OLD_ENVS=$(az containerapp env list -g ${{ env.AZURE_RG }} --query "[?location!='uaenorth'].name" -o tsv)
+          for env in $OLD_ENVS; do
+            echo "Deleting old environment: $env to free up student quota..."
+            az containerapp env delete -n $env -g ${{ env.AZURE_RG }} --yes
+          done
 
       - name: Ensure UAE Environment exists
         run: |
-          ENV_EXISTS=$(az containerapp env list -g $AZURE_RG --query "[?name=='managed-env-uae'].name" -o tsv)
+          ENV_EXISTS=$(az containerapp env list -g ${{ env.AZURE_RG }} --query "[?name=='${{ env.ENV_NAME }}'].name" -o tsv)
           if [ -z "$ENV_EXISTS" ]; then
-            echo "Creating managed-env-uae in uaenorth..."
-            az containerapp env create --name managed-env-uae --resource-group $AZURE_RG --location uaenorth
+            echo "Creating ${{ env.ENV_NAME }} in uaenorth..."
+            az containerapp env create --name ${{ env.ENV_NAME }} --resource-group ${{ env.AZURE_RG }} --location uaenorth
           fi
 
-      - name: Deploy Agent Engine to UAE
+      - name: Deploy Orchestrator
         run: |
-          APP_EXISTS=$(az containerapp list -g $AZURE_RG --query "[?name=='ca-agent-engine'].name" -o tsv)
+          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-orchestrator'].name" -o tsv)
           if [ -z "$APP_EXISTS" ]; then
-            echo "Creating new Agent Engine in UAE..."
-            az containerapp create \
-              -g $AZURE_RG -n ca-agent-engine \
-              --environment managed-env-uae \
-              --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG \
-              --ingress external --target-port 8000 \
+            az containerapp create -g ${{ env.AZURE_RG }} -n ca-orchestrator --environment ${{ env.ENV_NAME }} \
+              --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }} --ingress external --target-port 8080
+          else
+            az containerapp update -g ${{ env.AZURE_RG }} -n ca-orchestrator --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }}
+          fi
+
+      - name: Deploy Agent Engine
+        run: |
+          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-agent-engine'].name" -o tsv)
+          if [ -z "$APP_EXISTS" ]; then
+            az containerapp create -g ${{ env.AZURE_RG }} -n ca-agent-engine --environment ${{ env.ENV_NAME }} \
+              --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }} --ingress external --target-port 8000 \
               --cpu 1.0 --memory 2.0Gi
           else
-            echo "Updating existing Agent Engine..."
-            az containerapp update \
-              -g $AZURE_RG -n ca-agent-engine \
-              --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+            az containerapp update -g ${{ env.AZURE_RG }} -n ca-agent-engine --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }}
           fi
 
-  deploy-frontend:
-    name: Deploy (Frontend)
-    needs: build-frontend
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-    steps:
-      - name: Authenticate to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Ensure Container Apps extension
-        run: az extension add --name containerapp --upgrade --yes
-
-      - name: Deploy Frontend to Azure Container Apps
+      - name: Deploy Frontend
         run: |
-          az containerapp update -g $AZURE_RG -n ca-frontend --image $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+          APP_EXISTS=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?name=='ca-frontend'].name" -o tsv)
+          if [ -z "$APP_EXISTS" ]; then
+            az containerapp create -g ${{ env.AZURE_RG }} -n ca-frontend --environment ${{ env.ENV_NAME }} \
+              --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} --ingress external --target-port 3000
+          else
+            az containerapp update -g ${{ env.AZURE_RG }} -n ca-frontend --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}
+          fi
