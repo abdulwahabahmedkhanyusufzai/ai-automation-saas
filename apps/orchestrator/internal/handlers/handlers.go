@@ -136,7 +136,9 @@ func GithubLogin(c *fiber.Ctx) error {
 	}
 
 	// 1. Exchange code for access token
-	if models.GithubClientID == "" || models.GithubClientSecret == "" {
+	clientID := strings.TrimSpace(models.GithubClientID)
+	clientSecret := strings.TrimSpace(models.GithubClientSecret)
+	if clientID == "" || clientSecret == "" {
 		log.Printf("github token exchange error: missing GitHub credentials (GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET)")
 		return c.Status(500).JSON(fiber.Map{"error": "GitHub OAuth is not configured (missing GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET)"})
 	}
@@ -151,8 +153,8 @@ func GithubLogin(c *fiber.Ctx) error {
 
 	tokenURL := "https://github.com/login/oauth/access_token"
 	data := url.Values{}
-	data.Set("client_id", models.GithubClientID)
-	data.Set("client_secret", models.GithubClientSecret)
+	data.Set("client_id", clientID)
+	data.Set("client_secret", clientSecret)
 	data.Set("code", code)
 
 	req, _ := http.NewRequest("POST", tokenURL, strings.NewReader(data.Encode()))
