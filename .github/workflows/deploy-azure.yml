@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  # --- STARTING JOBS (No Dependencies) ---
+  # --- BUILD JOBS ---
   build-orchestrator:
     name: Build (Orchestrator)
     runs-on: ubuntu-latest
@@ -61,7 +61,7 @@ jobs:
             -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
           docker push $TAG
 
-  # --- DEPENDENT JOB (Waits for Builds) ---
+  # --- DEPLOYMENT JOB ---
   deploy-all-to-uae:
     name: Deploy to UAE
     needs: [build-orchestrator, build-agent-engine, build-frontend]
@@ -89,24 +89,34 @@ jobs:
           az containerapp env show -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} || \
           az containerapp env create -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} -l uaenorth
 
-      - name: Deploy Orchestrator
+      - name: Deploy All Apps
         run: |
+          # Fetch ACR Password once to use for all three apps
+          ACR_PASS=$(az acr credential show -n ${{ secrets.ACR_NAME }} --query "passwords[0].value" -o tsv)
+          
+          echo "Deploying ca-orchestrator..."
           az containerapp create -g ${{ env.AZURE_RG }} -n ca-orchestrator \
             --environment ${{ env.ENV_NAME }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }} \
-            --ingress external --target-port 8080 --cpu 0.5 --memory 1.0Gi
+            --ingress external --target-port 8080 --cpu 0.5 --memory 1.0Gi \
+            --registry-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_NAME }} \
+            --registry-password $ACR_PASS
 
-      - name: Deploy Agent Engine
-        run: |
+          echo "Deploying ca-agent-engine..."
           az containerapp create -g ${{ env.AZURE_RG }} -n ca-agent-engine \
             --environment ${{ env.ENV_NAME }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }} \
-            --ingress external --target-port 8000 \
-            --cpu 1.0 --memory 2.0Gi
+            --ingress external --target-port 8000 --cpu 1.0 --memory 2.0Gi \
+            --registry-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_NAME }} \
+            --registry-password $ACR_PASS
 
-      - name: Deploy Frontend
-        run: |
+          echo "Deploying ca-frontend..."
           az containerapp create -g ${{ env.AZURE_RG }} -n ca-frontend \
             --environment ${{ env.ENV_NAME }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} \
-            --ingress external --target-port 3000 --cpu 0.5 --memory 1.0Gi
+            --ingress external --target-port 3000 --cpu 0.5 --memory 1.0Gi \
+            --registry-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_NAME }} \
+            --registry-password $ACR_PASS
