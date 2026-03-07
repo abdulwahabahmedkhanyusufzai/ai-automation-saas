@@ -1,82 +1,5 @@
-name: AI SaaS CD Pipeline
-
-on:
-  push:
-    branches: [ master ]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  id-token: write
-  contents: read
-
-jobs:
-  # BUILD JOBS (Go, Python, Next.js)
-  build-orchestrator:
-    name: Build & Push (Orchestrator)
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - run: az acr login --name ${{ secrets.ACR_NAME }}
-      - run: |
-          TAG=$ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
-          docker build -t $TAG -f deployments/docker/Dockerfile.orchestrator .
-          docker push $TAG
-
-  build-agent-engine:
-    name: Build & Push (Agent Engine)
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - run: az acr login --name ${{ secrets.ACR_NAME }}
-      - run: |
-          TAG=$ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
-          docker build -t $TAG -f deployments/docker/Dockerfile.agent .
-          docker push $TAG
-
-  build-frontend:
-    name: Build & Push (Frontend)
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - run: az acr login --name ${{ secrets.ACR_NAME }}
-      - run: |
-          TAG=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
-          docker build \
-            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
-            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GITHUB_CLIENT_ID }} \
-            -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
-          docker push $TAG
-
-  # MIGRATION & DEPLOYMENT JOB
-  deploy-all-to-uae:
-    name: Migrate & Deploy to UAE
+deploy-all-to-uae:
+    name: Deploy to UAE
     needs: [build-orchestrator, build-agent-engine, build-frontend]
     runs-on: ubuntu-latest
     env:
@@ -96,31 +19,11 @@ jobs:
       - name: Ensure Container Apps extension
         run: az extension add --name containerapp --upgrade --yes
 
-      - name: Recursive Cleanup (Free Tier Quota Management)
-        run: |
-          echo "Phase 1: Finding old environments NOT in uaenorth..."
-          OLD_ENVS=$(az containerapp env list -g ${{ env.AZURE_RG }} --query "[?location!='uaenorth'].name" -o tsv)
-          
-          for env in $OLD_ENVS; do
-            echo "Phase 2: Removing all apps inside $env to allow deletion..."
-            # Find apps belonging to this environment
-            APPS_IN_ENV=$(az containerapp list -g ${{ env.AZURE_RG }} --query "[?contains(managedEnvironmentId, '$env')].name" -o tsv)
-            for app in $APPS_IN_ENV; do
-              echo "Deleting app: $app"
-              az containerapp delete -n $app -g ${{ env.AZURE_RG }} --yes
-            done
-            
-            echo "Phase 3: Deleting empty environment: $env"
-            az containerapp env delete -n $env -g ${{ env.AZURE_RG }} --yes
-          done
-
       - name: Ensure UAE Environment exists
         run: |
-          ENV_EXISTS=$(az containerapp env list -g ${{ env.AZURE_RG }} --query "[?name=='${{ env.ENV_NAME }}'].name" -o tsv)
-          if [ -z "$ENV_EXISTS" ]; then
-            echo "Creating ${{ env.ENV_NAME }} in uaenorth..."
-            az containerapp env create --name ${{ env.ENV_NAME }} --resource-group ${{ env.AZURE_RG }} --location uaenorth
-          fi
+          # Simple check: if it's not there, create it.
+          az containerapp env show -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} || \
+          az containerapp env create -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} -l uaenorth
 
       - name: Deploy Orchestrator
         run: |
