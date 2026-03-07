@@ -20,14 +20,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Azure OIDC secrets
-        if: ${{ secrets.AZURE_CLIENT_ID == '' || secrets.AZURE_TENANT_ID == '' || secrets.AZURE_SUBSCRIPTION_ID == '' }}
         run: |
-          echo "ERROR: Missing required Azure OIDC secrets."
-          echo "Make sure these secrets exist in Settings → Secrets and variables → Actions:"
-          echo "  - AZURE_CLIENT_ID"
-          echo "  - AZURE_TENANT_ID"
-          echo "  - AZURE_SUBSCRIPTION_ID"
-          exit 1
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ] || [ -z "${{ secrets.AZURE_TENANT_ID }}" ] || [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "ERROR: Missing required Azure OIDC secrets."
+            echo "Make sure these secrets exist in Settings → Secrets and variables → Actions:"
+            echo "  - AZURE_CLIENT_ID"
+            echo "  - AZURE_TENANT_ID"
+            echo "  - AZURE_SUBSCRIPTION_ID"
+            exit 1
+          fi
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -42,11 +43,12 @@ jobs:
           az group list -o table
 
       - name: Validate ACR_NAME secret
-        if: ${{ secrets.ACR_NAME == '' }}
         run: |
-          echo "ERROR: GitHub secret ACR_NAME is not set."
-          echo "Go to Settings → Secrets and add ACR_NAME with your ACR registry name."
-          exit 1
+          if [ -z "${{ secrets.ACR_NAME }}" ]; then
+            echo "ERROR: GitHub secret ACR_NAME is not set."
+            echo "Go to Settings → Secrets and add ACR_NAME with your ACR registry name."
+            exit 1
+          fi
 
       - name: ACR Login
         run: az acr login --name ${{ secrets.ACR_NAME }}
