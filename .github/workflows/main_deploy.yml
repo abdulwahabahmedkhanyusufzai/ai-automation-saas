@@ -120,7 +120,7 @@ jobs:
 
   deploy-agent-engine:
     name: Deploy (Agent Engine)
-    needs: build-agent-engine
+    needs: [deploy-orchestrator, build-agent-engine]
     runs-on: ubuntu-latest
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
