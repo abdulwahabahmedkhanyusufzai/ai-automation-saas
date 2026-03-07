@@ -19,6 +19,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Validate Azure OIDC secrets
+        if: ${{ secrets.AZURE_CLIENT_ID == '' || secrets.AZURE_TENANT_ID == '' || secrets.AZURE_SUBSCRIPTION_ID == '' }}
+        run: |
+          echo "ERROR: Missing required Azure OIDC secrets."
+          echo "Make sure these secrets exist in Settings → Secrets and variables → Actions:"
+          echo "  - AZURE_CLIENT_ID"
+          echo "  - AZURE_TENANT_ID"
+          echo "  - AZURE_SUBSCRIPTION_ID"
+          exit 1
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
