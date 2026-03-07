@@ -1,14 +1,29 @@
-deploy-all-to-uae:
+name: AI SaaS CD Pipeline
+
+on:
+  push:
+    branches: [ master ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Note: I am assuming your build jobs (build-orchestrator, etc.) 
+  # are already defined earlier in the file.
+  
+  deploy-all-to-uae:
     name: Deploy to UAE
     needs: [build-orchestrator, build-agent-engine, build-frontend]
     runs-on: ubuntu-latest
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      AZURE_RG: 'rg-agentic-saas'
       ENV_NAME: 'managed-env-uae'
     steps:
       - uses: actions/checkout@v4
+      
       - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -21,7 +36,7 @@ deploy-all-to-uae:
 
       - name: Ensure UAE Environment exists
         run: |
-          # Simple check: if it's not there, create it.
+          # If the environment exists, this command returns 0; if not, it runs the create command.
           az containerapp env show -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} || \
           az containerapp env create -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} -l uaenorth
 
