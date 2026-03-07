@@ -7,6 +7,10 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      AZURE_LOCATION: "East US"
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -57,7 +61,8 @@ jobs:
       - name: Deploy Orchestrator to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
-          resourceGroup: ${{ secrets.AZURE_RG }}
+          resourceGroup: ${{ env.AZURE_RG }}
+          location: ${{ env.AZURE_LOCATION }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-orchestrator
           imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
@@ -65,7 +70,8 @@ jobs:
       - name: Deploy Agent Engine to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
-          resourceGroup: ${{ secrets.AZURE_RG }}
+          resourceGroup: ${{ env.AZURE_RG }}
+          location: ${{ env.AZURE_LOCATION }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-agent-engine
           imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
@@ -73,7 +79,8 @@ jobs:
       - name: Deploy Frontend to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
-          resourceGroup: ${{ secrets.AZURE_RG }}
+          resourceGroup: ${{ env.AZURE_RG }}
+          location: ${{ env.AZURE_LOCATION }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-frontend
           imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
