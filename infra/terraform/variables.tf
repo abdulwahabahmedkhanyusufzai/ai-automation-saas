@@ -22,3 +22,15 @@ variable "gemini_api_key" {
   description = "Google Gemini API Key (AI Agent)"
   sensitive   = true
 }
+
+variable "next_public_google_client_id" {
+  description = "Next.js frontend Google OAuth client ID"
+  type        = string
+  default     = ""
+}
+
+variable "next_public_github_client_id" {
+  description = "Next.js frontend GitHub OAuth client ID"
+  type        = string
+  default     = ""
+}

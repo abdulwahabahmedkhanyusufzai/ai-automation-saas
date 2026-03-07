@@ -103,6 +103,41 @@ resource "azurerm_container_app" "agent_engine" {
   }
 }
 
+# 3. Frontend (Next.js)
+resource "azurerm_container_app" "frontend" {
+  name                         = "ca-frontend"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = azurerm_resource_group.main.name
+  revision_mode                = "Single"
+
+  template {
+    container {
+      name   = "frontend"
+      image  = "${azurerm_container_registry.acr.login_server}/frontend:latest"
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "NEXT_PUBLIC_GOOGLE_CLIENT_ID"
+        value = var.next_public_google_client_id
+      }
+      env {
+        name  = "NEXT_PUBLIC_GITHUB_CLIENT_ID"
+        value = var.next_public_github_client_id
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 3000
+    traffic_weight {
+      percentage = 100
+      latest_revision = true
+    }
+  }
+}
+
 output "acr_login_server" {
   value = azurerm_container_registry.acr.login_server
 }

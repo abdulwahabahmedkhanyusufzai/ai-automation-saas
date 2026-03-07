@@ -2,7 +2,7 @@ name: Azure Deployment (Container Apps) 🚀
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build-and-deploy:
@@ -29,10 +29,31 @@ jobs:
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest -f deployments/docker/Dockerfile.agent apps/agent-engine
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
 
-      - name: Deploy to Azure Container Apps
+      - name: Build and Push Frontend
+        run: |
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest -f deployments/docker/Dockerfile.frontend apps/frontend
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+
+      - name: Deploy Orchestrator to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
           resourceGroup: ${{ secrets.AZURE_RG }}
           containerAppEnvironment: cae-agentic-saas
           containerAppName: ca-orchestrator
           imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+
+      - name: Deploy Agent Engine to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-agent-engine
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+
+      - name: Deploy Frontend to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppEnvironment: cae-agentic-saas
+          containerAppName: ca-frontend
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest

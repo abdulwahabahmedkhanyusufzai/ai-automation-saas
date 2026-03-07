@@ -5,6 +5,8 @@ import (
 	"ai-saas-orchesrator/internal/models"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -151,13 +153,27 @@ func GithubLogin(c *fiber.Ctx) error {
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	var tokenResp struct {
-		AccessToken string `json:"access_token"`
+		AccessToken      string `json:"access_token"`
+		TokenType        string `json:"token_type"`
+		Scope            string `json:"scope"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
 	}
-	json.NewDecoder(resp.Body).Decode(&tokenResp)
+	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
+		log.Printf("github token exchange: failed to parse response: %v; raw=%s", err, string(bodyBytes))
+	} else if tokenResp.Error != "" {
+		log.Printf("github token exchange error: %s - %s", tokenResp.Error, tokenResp.ErrorDescription)
+	}
 
 	if tokenResp.AccessToken == "" {
-		return c.Status(401).JSON(fiber.Map{"error": "Invalid code from GitHub"})
+		log.Printf("github token exchange failed (status=%d): %s", resp.StatusCode, string(bodyBytes))
+		message := "Invalid code from GitHub"
+		if tokenResp.Error != "" {
+			message = fmt.Sprintf("GitHub token error: %s", tokenResp.ErrorDescription)
+		}
+		return c.Status(401).JSON(fiber.Map{"error": message})
 	}
 
 	// 2. Fetch user information
