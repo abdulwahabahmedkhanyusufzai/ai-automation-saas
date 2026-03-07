@@ -9,26 +9,13 @@ permissions:
   contents: read
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - service: orchestrator
-            context: .
-            dockerfile: deployments/docker/Dockerfile.orchestrator
-            image: orchestrator
-          - service: agent-engine
-            context: .
-            dockerfile: deployments/docker/Dockerfile.agent
-            image: agent-engine
-          - service: frontend
-            context: apps/frontend
-            dockerfile: deployments/docker/Dockerfile.frontend
-            image: frontend
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      AZURE_LOCATION: "East US"
     steps:
       - uses: actions/checkout@v4
 
@@ -42,20 +29,48 @@ jobs:
       - name: ACR Login
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Build & Push
+      - name: Build & Push Orchestrator
         run: |
-          TAG=$ACR_LOGIN_SERVER/${{ matrix.image }}:$IMAGE_TAG
-          docker build -t $TAG -f ${{ matrix.dockerfile }} ${{ matrix.context }}
+          TAG=$ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
+          docker build -t $TAG -f deployments/docker/Dockerfile.orchestrator .
           docker push $TAG
 
-  deploy:
-    runs-on: ubuntu-latest
-    env:
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
-      IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-      AZURE_LOCATION: "East US"
-    steps:
+      - name: Build & Push Agent Engine
+        run: |
+          TAG=$ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+          docker build -t $TAG -f deployments/docker/Dockerfile.agent .
+          docker push $TAG
+
+      - name: Build & Push Frontend
+        run: |
+          TAG=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+          docker build \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
+            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GITHUB_CLIENT_ID }} \
+            -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
+          docker push $TAG
+
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade --yes
+
+      - name: Verify ACR images exist
+        run: |
+          echo "Verifying image tags exist in ACR..."
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository orchestrator --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: orchestrator image tag $IMAGE_TAG not found in ACR" && exit 1)
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository agent-engine --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: agent-engine image tag $IMAGE_TAG not found in ACR" && exit 1)
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository frontend --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: frontend image tag $IMAGE_TAG not found in ACR" && exit 1)
+
+      - name: Deploy Orchestrator to Azure Container Apps
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-orchestrator --image $ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
+
+      - name: Deploy Agent Engine to Azure Container Apps
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-agent-engine --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+
+      - name: Deploy Frontend to Azure Container Apps
+        run: |
+          az containerapp update -g $AZURE_RG -n ca-frontend --image $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -65,6 +80,13 @@ jobs:
 
       - name: Ensure Container Apps extension
         run: az extension add --name containerapp --upgrade --yes
+
+      - name: Verify ACR images exist
+        run: |
+          echo "Verifying image tags exist in ACR..."
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository orchestrator --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: orchestrator image tag $IMAGE_TAG not found in ACR" && exit 1)
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository agent-engine --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: agent-engine image tag $IMAGE_TAG not found in ACR" && exit 1)
+          az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository frontend --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: frontend image tag $IMAGE_TAG not found in ACR" && exit 1)
 
       - name: Deploy Orchestrator to Azure Container Apps
         run: |
