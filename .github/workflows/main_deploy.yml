@@ -148,14 +148,28 @@ jobs:
           echo "Verifying agent-engine image tag exists in ACR..."
           az acr repository show-tags --name ${{ secrets.ACR_NAME }} --repository agent-engine --query "[?@=='$IMAGE_TAG']" -o tsv | grep -q "$IMAGE_TAG" || (echo "ERROR: agent-engine image tag $IMAGE_TAG not found in ACR" && exit 1)
 
-      - name: Deploy Agent Engine to Azure Container Apps
+      - name: Deploy Agent Engine to UAE
         run: |
-          az containerapp update \
-            -g $AZURE_RG \
-            -n ca-agent-engine \
-            --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG \
-            --environment managed-env-uae
+          # 1. Check if the app exists in the NEW UAE environment
+          EXISTS=$(az containerapp list -g $AZURE_RG --query "[?name=='ca-agent-engine' && properties.environmentId=='managed-env-uae'].name" -o tsv)
 
+          if [ -z "$EXISTS" ]; then
+            echo "Creating new Agent Engine in UAE..."
+            az containerapp create \
+              -g $AZURE_RG \
+              -n ca-agent-engine \
+              --environment managed-env-uae \
+              --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG \
+              --ingress external \
+              --target-port 8000 \
+              --cpu 1.0 --memory 2.0Gi
+          else
+            echo "Updating existing Agent Engine in UAE..."
+            az containerapp update \
+              -g $AZURE_RG \
+              -n ca-agent-engine \
+              --image $ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
+          fi
   deploy-frontend:
     name: Deploy (Frontend)
     needs: build-frontend
