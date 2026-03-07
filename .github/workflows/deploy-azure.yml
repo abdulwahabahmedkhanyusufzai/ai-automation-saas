@@ -1,86 +1,112 @@
-name: Azure Deployment (Container Apps) 🚀
+name: AI SaaS CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ master ]
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  build-and-deploy:
+  # --- STARTING JOBS (No Dependencies) ---
+  build-orchestrator:
+    name: Build (Orchestrator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          TAG=${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:${{ github.sha }}
+          docker build -t $TAG -f deployments/docker/Dockerfile.orchestrator .
+          docker push $TAG
+
+  build-agent-engine:
+    name: Build (Agent Engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          TAG=${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:${{ github.sha }}
+          docker build -t $TAG -f deployments/docker/Dockerfile.agent .
+          docker push $TAG
+
+  build-frontend:
+    name: Build (Frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          TAG=${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }}
+          docker build \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
+            --build-arg NEXT_PUBLIC_GITHUB_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GITHUB_CLIENT_ID }} \
+            -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
+          docker push $TAG
+
+  # --- DEPENDENT JOB (Waits for Builds) ---
+  deploy-all-to-uae:
+    name: Deploy to UAE
+    needs: [build-orchestrator, build-agent-engine, build-frontend]
     runs-on: ubuntu-latest
     env:
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-      AZURE_LOCATION: "East US"
-
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: 'rg-agentic-saas'
+      ENV_NAME: 'managed-env-uae'
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Validate Azure credentials secret
-        if: ${{ secrets.AZURE_CREDENTIALS == '' }}
-        run: |
-          echo "ERROR: GitHub secret AZURE_CREDENTIALS is missing or empty."
-          echo "Create a service principal and set the JSON output as the AZURE_CREDENTIALS secret."
-          echo "See: https://github.com/Azure/login#configure-your-service-principal"
-          exit 1
-
-      - name: Validate Azure OIDC secrets
-        if: ${{ secrets.AZURE_CLIENT_ID == '' || secrets.AZURE_TENANT_ID == '' || secrets.AZURE_SUBSCRIPTION_ID == '' }}
-        run: |
-          echo "ERROR: Missing required Azure OIDC secrets."
-          echo "Set these in Settings → Secrets and variables → Actions:"
-          echo "  - AZURE_CLIENT_ID"
-          echo "  - AZURE_TENANT_ID"
-          echo "  - AZURE_SUBSCRIPTION_ID"
-          exit 1
-
-      - name: Azure Login (OIDC)
+      - uses: actions/checkout@v4
+      
+      - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: ACR Login
-        run: az acr login --name ${{ secrets.ACR_NAME }}
+      - name: Ensure Container Apps extension
+        run: az extension add --name containerapp --upgrade --yes
 
-      - name: Build and Push Orchestrator
+      - name: Ensure UAE Environment exists
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest -f deployments/docker/Dockerfile.orchestrator apps/orchestrator
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
+          az containerapp env show -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} || \
+          az containerapp env create -n ${{ env.ENV_NAME }} -g ${{ env.AZURE_RG }} -l uaenorth
 
-      - name: Build and Push Agent Engine
+      - name: Deploy Orchestrator
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest -f deployments/docker/Dockerfile.agent apps/agent-engine
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-orchestrator \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/orchestrator:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 8080 --cpu 0.5 --memory 1.0Gi
 
-      - name: Build and Push Frontend
+      - name: Deploy Agent Engine
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest -f deployments/docker/Dockerfile.frontend apps/frontend
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-agent-engine \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/agent-engine:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 8000 \
+            --cpu 1.0 --memory 2.0Gi
 
-      - name: Deploy Orchestrator to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-orchestrator
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/orchestrator:latest
-
-      - name: Deploy Agent Engine to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-agent-engine
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/agent-engine:latest
-
-      - name: Deploy Frontend to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resourceGroup: ${{ env.AZURE_RG }}
-          location: ${{ env.AZURE_LOCATION }}
-          containerAppEnvironment: cae-agentic-saas
-          containerAppName: ca-frontend
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+      - name: Deploy Frontend
+        run: |
+          az containerapp create -g ${{ env.AZURE_RG }} -n ca-frontend \
+            --environment ${{ env.ENV_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} \
+            --ingress external --target-port 3000 --cpu 0.5 --memory 1.0Gi
