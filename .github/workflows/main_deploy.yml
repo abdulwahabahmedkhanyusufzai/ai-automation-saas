@@ -8,40 +8,86 @@ permissions:
   id-token: write
   contents: read
 
+# This pipeline is structured to run multiple logical processes in parallel
+# so the GitHub Actions graph clearly shows separate steps for each build.
+#
+# The jobs run in parallel where possible, then a final deploy job runs once
+# all build jobs have completed successfully.
+
 jobs:
-  build-and-deploy:
+  build-orchestrator:
+    name: Build & Push (Orchestrator)
     runs-on: ubuntu-latest
     env:
       ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
       IMAGE_TAG: ${{ github.sha }}
-      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
-      AZURE_LOCATION: "East US"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Azure Login (OIDC)
+      - name: Authenticate to Azure (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: ACR Login
+      - name: Login to ACR
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Build & Push Orchestrator
+      - name: Build + Push Orchestrator image
         run: |
           TAG=$ACR_LOGIN_SERVER/orchestrator:$IMAGE_TAG
           docker build -t $TAG -f deployments/docker/Dockerfile.orchestrator .
           docker push $TAG
 
-      - name: Build & Push Agent Engine
+  build-agent-engine:
+    name: Build & Push (Agent Engine)
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build + Push Agent Engine image
         run: |
           TAG=$ACR_LOGIN_SERVER/agent-engine:$IMAGE_TAG
           docker build -t $TAG -f deployments/docker/Dockerfile.agent .
           docker push $TAG
 
-      - name: Build & Push Frontend
+  build-frontend:
+    name: Build & Push (Frontend)
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build + Push Frontend image
         run: |
           TAG=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
           docker build \
@@ -50,7 +96,24 @@ jobs:
             -t $TAG -f deployments/docker/Dockerfile.frontend apps/frontend
           docker push $TAG
 
-      - name: Ensure Container Apps extension
+  deploy:
+    name: Deploy (Container Apps)
+    needs: [build-orchestrator, build-agent-engine, build-frontend]
+    runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_NAME }}.azurecr.io
+      IMAGE_TAG: ${{ github.sha }}
+      AZURE_RG: ${{ secrets.AZURE_RG || 'rg-agentic-saas' }}
+      AZURE_LOCATION: "East US"
+    steps:
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure Container Apps extension is installed
         run: az extension add --name containerapp --upgrade --yes
 
       - name: Verify ACR images exist
