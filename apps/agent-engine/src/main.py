@@ -54,7 +54,7 @@ if __name__ == "__main__":
     # --- Production-Ready Runner ---
     uvicorn.run(
         app, 
-        host="127.0.0.1", 
+        host="0.0.0.0", 
         port=8000, 
         # On Windows, 'workers' must be 1 if using a custom loop policy in __main__
         workers=1,           
