@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Sparkles, Mail, Lock, LogIn, Loader2, CheckCircle2, ArrowRight, Github } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 
+const ORCH_URL = process.env.NEXT_PUBLIC_ORCH_URL || "http://localhost:8080";
+
 export function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -28,7 +30,7 @@ export function LoginForm() {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/github-login", {
+            const res = await fetch(`${ORCH_URL}/github-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ code }),
@@ -56,7 +58,7 @@ export function LoginForm() {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/google-login", {
+            const res = await fetch(`${ORCH_URL}/google-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ token: credentialResponse.credential }),
@@ -80,7 +82,7 @@ export function LoginForm() {
         setError("");
 
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/login", {
+            const res = await fetch(`${ORCH_URL}/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password }),
@@ -112,7 +114,7 @@ export function LoginForm() {
                         <Sparkles size={28} className="text-white" />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Welcome back</h1>
-                    <p className="text-sm text-slate-500 font-medium mt-2">Sign in to your orchestrator dashboard.</p>
+                    <p className="text-sm text-slate-500 font-medium mt-2">Sign in to your BistroOS dashboard.</p>
                 </div>
 
                 {/* Card */}

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgenticSaaS | Distributed AI Orchestration",
-  description: "Enterprise-grade distributed AI agent orchestration platform powered by Go, Redis, and LangGraph.",
+  title: "BistroOS | The Restaurant Operating System",
+  description: "Synchronize kitchen operations, floor plans, real-time table telemetry, and AI-driven menu forecasting.",
 };
 
 import GoogleAuthProvider from "@/components/GoogleAuthProvider";

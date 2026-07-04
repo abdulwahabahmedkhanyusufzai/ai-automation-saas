@@ -120,16 +120,6 @@ make build-prod
 make deploy-prod
 ```
 
-### ☁️ Cloud Deployment (Azure)
-This project is optimized for **Azure Container Apps (Serverless)**.
-- **Infrastructure**: See [infra/terraform/azure.tf](./infra/terraform/azure.tf)
-- **CI/CD**: See [.github/workflows/deploy-azure.yml](./.github/workflows/deploy-azure.yml)
-- **Full Guide**: [docs/deployment.md](./docs/deployment.md)
-
-
-
-
-
 ---
 
 ## 📡 Live Signaling Flow
@@ -148,7 +138,6 @@ AgenticSaaS uses a bi-directional signaling pattern. While the `Asynq` worker ha
 ├── deployments/         # Docker, K8s, and CI/CD configurations
 │   └── docker/          # Docker compose and service-specific Dockerfiles
 ├── docs/                # System documentation and architecture diagrams
-├── infra/               # Infrastructure as Code (Terraform, etc.)
 ├── libs/                # Shared internal libraries and protos
 ├── scripts/             # Development and deployment scripts
 ├── tests/               # End-to-end and integration tests

@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Sparkles, Mail, Lock, UserPlus, Loader2, ArrowRight, Github } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 
+const ORCH_URL = process.env.NEXT_PUBLIC_ORCH_URL || "http://localhost:8080";
+
 export function SignupForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -27,7 +29,7 @@ export function SignupForm() {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/github-login", {
+            const res = await fetch(`${ORCH_URL}/github-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ code }),
@@ -55,7 +57,7 @@ export function SignupForm() {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/google-login", {
+            const res = await fetch(`${ORCH_URL}/google-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ token: credentialResponse.credential }),
@@ -79,7 +81,7 @@ export function SignupForm() {
         setError("");
 
         try {
-            const res = await fetch("https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/signup", {
+            const res = await fetch(`${ORCH_URL}/signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password }),
@@ -110,7 +112,7 @@ export function SignupForm() {
                         <Sparkles size={28} className="text-white" />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Create your account</h1>
-                    <p className="text-sm text-slate-500 font-medium mt-2">Start orchestrating AI workflows today.</p>
+                    <p className="text-sm text-slate-500 font-medium mt-2">Get started with BistroOS today.</p>
                 </div>
 
                 {/* Card */}

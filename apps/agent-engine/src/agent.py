@@ -19,10 +19,11 @@ llm = ChatGoogleGenerativeAI(
 # Signal Helper to notify Go API of progress with real-time content
 async def send_signal(task_id: str, phase: str, message: str = ""):
     if not task_id: return
+    signal_url = os.getenv("AGENT_SIGNAL_URL") or "http://localhost:8080/api/v1/internal/progress"
     try:
         async with httpx.AsyncClient() as client:
             await client.post(
-                "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/internal/progress",
+                signal_url,
                 json={
                     "task_id": task_id, 
                     "phase": phase,

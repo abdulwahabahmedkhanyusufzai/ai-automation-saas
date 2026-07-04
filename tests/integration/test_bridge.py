@@ -3,9 +3,11 @@ import pytest
 import httpx
 import time
 
+import os
+
 # Configurable endpoints
-ORCHESTRATOR_URL = "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io"
-AGENT_ENGINE_URL = "http://localhost:8000"
+ORCHESTRATOR_URL = os.getenv("NEXT_PUBLIC_ORCH_URL") or "http://localhost:8080"
+AGENT_ENGINE_URL = os.getenv("AGENT_ENGINE_URL") or "http://localhost:8000"
 
 def test_agent_engine_health():
     """Verify Agent Engine is responsive over HTTP"""

@@ -8,6 +8,8 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Sparkles, Send, Loader2, CheckCircle2, Terminal, Copy, RefreshCw, FileText, LogOut } from "lucide-react";
 
+const ORCH_URL = process.env.NEXT_PUBLIC_ORCH_URL || "http://localhost:8080";
+
 export default function WorkflowDashboard() {
     const router = useRouter();
     const [instruction, setInstruction] = useState("");
@@ -41,7 +43,7 @@ export default function WorkflowDashboard() {
 
         try {
             const res = await axios.post(
-                "https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/workflows/trigger",
+                `${ORCH_URL}/api/v1/workflows/trigger`,
                 {
                     workflow_id: Math.random().toString(36).substring(7),
                     instruction: instruction,
@@ -64,7 +66,7 @@ export default function WorkflowDashboard() {
                 try {
                     const token = localStorage.getItem("token");
                     const res = await axios.get(
-                        `https://ca-orchestrator.grayglacier-f4d16ba4.eastasia.azurecontainerapps.io/api/v1/workflows/status/${taskId}`,
+                        `${ORCH_URL}/api/v1/workflows/status/${taskId}`,
                         {
                             headers: { Authorization: `Bearer ${token}` } // Attach JWT
                         }
@@ -120,12 +122,12 @@ export default function WorkflowDashboard() {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-10">
                     <div className="flex items-center gap-4">
-                        <div className="p-2.5 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200">
+                        <div className="p-2.5 bg-orange-600 rounded-2xl shadow-lg shadow-orange-200">
                             <Sparkles size={22} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-semibold text-slate-800 tracking-tight">Agent Orchestrator</h1>
-                            <p className="text-sm text-slate-500 font-medium tracking-tight">Distributed Microservices Architecture</p>
+                            <h1 className="text-xl font-semibold text-slate-800 tracking-tight">BistroOS Intelligence</h1>
+                            <p className="text-sm text-slate-500 font-medium tracking-tight">AI Restaurant Engine</p>
                         </div>
                     </div>
 
@@ -153,7 +155,7 @@ export default function WorkflowDashboard() {
                 <div className="bg-white border border-slate-200 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden transition-all duration-300 focus-within:ring-4 focus-within:ring-blue-500/5 focus-within:border-blue-500/40">
                     <textarea
                         className="w-full h-44 p-8 bg-transparent outline-none resize-none text-lg text-slate-700 placeholder:text-slate-300 leading-relaxed font-medium"
-                        placeholder="What should the agent analyze today?"
+                        placeholder="Ask BistroOS to analyze menu margins, inventory trends, or scheduling optimization..."
                         value={instruction}
                         onChange={(e) => setInstruction(e.target.value)}
                     />
